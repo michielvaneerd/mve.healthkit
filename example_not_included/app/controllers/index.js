@@ -7,7 +7,7 @@ function doClick(e) {
 		hk.fetchData({
 			quantityTypeIdentifier: $.quantityType.value,
 			timeFrame: "hourly",
-			startDate: moment().subtract(3, 'd').toDate(),
+			startDate: moment().subtract(7, 'd').toDate(),
 			endDate: new Date(),
 			onSuccess: callback,
 			onError: function(error) {

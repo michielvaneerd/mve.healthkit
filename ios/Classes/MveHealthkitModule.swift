@@ -31,25 +31,54 @@ class MveHealthkitModule: TiModule {
     let unknownError = "Unknown error"
     static var errorCallback: KrollCallback? = nil
     
-    let quantityOptionDict = [
+    //var quantityOptionDict = [HKQuantityTypeIdentifier: HKStatisticsOptions]()
+    
+    // See startUp where conditional keys are added
+    var quantityOptionDict = [
         HKQuantityTypeIdentifier.stepCount: HKStatisticsOptions.cumulativeSum,
         HKQuantityTypeIdentifier.heartRate: HKStatisticsOptions.discreteAverage,
-        HKQuantityTypeIdentifier.activeEnergyBurned: HKStatisticsOptions.cumulativeSum
+        HKQuantityTypeIdentifier.activeEnergyBurned: HKStatisticsOptions.cumulativeSum,
+        HKQuantityTypeIdentifier.appleExerciseTime: HKStatisticsOptions.cumulativeSum,
+        HKQuantityTypeIdentifier.distanceWalkingRunning: HKStatisticsOptions.cumulativeSum,
+        HKQuantityTypeIdentifier.distanceCycling: HKStatisticsOptions.cumulativeSum,
+        HKQuantityTypeIdentifier.pushCount: HKStatisticsOptions.cumulativeSum,
+        HKQuantityTypeIdentifier.distanceWheelchair: HKStatisticsOptions.cumulativeSum
     ]
     
-    let quantityCountFuncDict = [
+    // See startUp where conditional keys are added
+    var quantityCountFuncDict = [
         HKQuantityTypeIdentifier.stepCount: { HKUnit.count() },
         HKQuantityTypeIdentifier.heartRate: { HKUnit.count().unitDivided(by: HKUnit.minute()) },
-        HKQuantityTypeIdentifier.activeEnergyBurned : { HKUnit.kilocalorie() }
+        HKQuantityTypeIdentifier.activeEnergyBurned : { HKUnit.kilocalorie() },
+        HKQuantityTypeIdentifier.appleExerciseTime : { HKUnit.minute() },
+        HKQuantityTypeIdentifier.distanceWalkingRunning: { HKUnit.meterUnit(with: .kilo) }, // or mile() or meter()?
+        HKQuantityTypeIdentifier.distanceCycling: { HKUnit.meterUnit(with: .kilo) }, // or mile() or meter()?
+        HKQuantityTypeIdentifier.distanceWheelchair: { HKUnit.meterUnit(with: .kilo) }, // or mile() or meter()?
+        HKQuantityTypeIdentifier.pushCount: { HKUnit.count() }
     ];
     
     private func getStatisticsQuantityFunc(statistics: HKStatistics, quantityTypeIdentifier: HKQuantityTypeIdentifier) -> HKQuantity? {
         switch quantityTypeIdentifier {
-        case .stepCount, .activeEnergyBurned:
+        case .stepCount, .activeEnergyBurned, .appleExerciseTime, .distanceWalkingRunning, .distanceCycling, .pushCount, .distanceWheelchair:
             return statistics.sumQuantity()
         case .heartRate:
             return statistics.averageQuantity()
         default:
+            if #available(iOS 11.0, *) {
+                switch quantityTypeIdentifier {
+                case .restingHeartRate, .walkingHeartRateAverage:
+                    return statistics.averageQuantity()
+                default:
+                    if #available(iOS 13.0, *) {
+                        switch quantityTypeIdentifier {
+                        case .appleStandTime:
+                            return statistics.sumQuantity()
+                        default:
+                            return nil
+                        }
+                    }
+                }
+            }
             return nil
         }
     }
@@ -68,11 +97,23 @@ class MveHealthkitModule: TiModule {
 
     override func startup() {
         super.startup()
-        debugPrint("[DEBUG] \(self) loaded")
+        
+        if #available(iOS 11.0, *) {
+            quantityOptionDict[HKQuantityTypeIdentifier.restingHeartRate] = HKStatisticsOptions.discreteAverage
+            quantityCountFuncDict[HKQuantityTypeIdentifier.restingHeartRate] = quantityCountFuncDict[HKQuantityTypeIdentifier.heartRate]
+            quantityOptionDict[HKQuantityTypeIdentifier.walkingHeartRateAverage] = HKStatisticsOptions.discreteAverage
+            quantityCountFuncDict[HKQuantityTypeIdentifier.walkingHeartRateAverage] = quantityCountFuncDict[HKQuantityTypeIdentifier.heartRate]
+        }
+        
+        if #available(iOS 13.0, *) {
+            quantityOptionDict[HKQuantityTypeIdentifier.appleStandTime] = HKStatisticsOptions.cumulativeSum
+            quantityCountFuncDict[HKQuantityTypeIdentifier.appleStandTime] = { HKUnit.minute() }
+        }
+        
     }
     
     private func onError(_ message: String) {
-        MveHealthkitModule.errorCallback?.call([["error": message]], thisObject: self)
+        MveHealthkitModule.errorCallback?.call([["error": message]], thisObject: nil)
     }
     
     @objc(isHealthDataAvailable:)
@@ -80,7 +121,6 @@ class MveHealthkitModule: TiModule {
         return HKHealthStore.isHealthDataAvailable()
     }
     
-    // TODO: How to name this method when it throws exceptions? @objc(fetchData::) doesn't work...
     @objc(fetchData:)
     func fetchData(arguments: Array<Any>?) {
         
@@ -161,37 +201,30 @@ class MveHealthkitModule: TiModule {
                     return
                 }
                 
-                var results = [String: Int]()
+                //var results = [String: Int]()
+                var results = Array<[String: Int]>()
                 
                 collection.enumerateStatistics(from: startDate, to: endDate) { (statistics: HKStatistics, stop) in
                     
                     if let quantity = self.getStatisticsQuantityFunc(statistics: statistics, quantityTypeIdentifier: quantityTypeIdentifier) {
-                        results[formatter.string(from: statistics.startDate)] = Int(quantity.doubleValue(for: self.quantityCountFuncDict[quantityTypeIdentifier]!()))
+//                        results[formatter.string(from: statistics.startDate)] = Int(quantity.doubleValue(for: self.quantityCountFuncDict[quantityTypeIdentifier]!()))
+                        results.append([formatter.string(from: statistics.startDate): Int(quantity.doubleValue(for: self.quantityCountFuncDict[quantityTypeIdentifier]!()))])
                     }
                     
                 }
                 
-                // Moet ik deze nu op UI thread aanroepen?
-                successCallback.call([
-                    results
-                ], thisObject: self)
+                DispatchQueue.main.async {
+                    successCallback.call([
+                        results
+                    ], thisObject: nil)
+                }
                 
             }
             
             store.execute(query)
             
         }
-          
-
         
-    }
-    
-    @objc(anotherExample:)
-    func anotherExample(arguments: Array<Any>?) -> String? {
-        guard let arguments = arguments, let params = arguments[0] as? [String: Any] else { return nil }
-        
-        debugPrint(params["name"]!)
-        return params["name"] as? String
     }
   
 }
