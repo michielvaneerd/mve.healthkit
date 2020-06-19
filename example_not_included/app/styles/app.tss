@@ -1,0 +1,6 @@
+'Window': {
+	backgroundColor: "white"
+},
+'Label': {
+	color: "black"
+}

@@ -1,0 +1,18 @@
+#
+# this is your module manifest and used by Titanium
+# during compilation, packaging, distribution, etc.
+#
+version: 1.0.0
+apiversion: 2
+architectures: armv7 arm64 i386 x86_64
+description: mvehealthkit is a Swift based Titanium module.
+author: Your Name
+license: Specify your license
+copyright: Copyright (c) 2020 by Your Company
+
+# these should not be edited
+name: mvehealthkit
+moduleid: mve.healthkit
+guid: 3912394f-db98-4ca7-af7a-9ddb8123462c
+platform: iphone
+minsdk: 9.0.3.GA

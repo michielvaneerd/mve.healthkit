@@ -1,0 +1,11 @@
+framework module MveHealthkit {
+  umbrella header "MveHealthkit.h"
+
+  export *
+  module * { export * }
+}
+
+module MveHealthkit.Swift {
+    header "MveHealthkit-Swift.h"
+    requires objc
+}

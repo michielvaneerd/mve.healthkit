@@ -1,0 +1,8 @@
+<Alloy>
+	<Window>
+		<View height="Ti.UI.SIZE" layout="vertical">
+			<TextField id="quantityType" backgroundColor="#F0F0F0" color="black" left="10" right="10" height="40" />
+			<Button onClick="doClick">OK</Button>
+		</View>
+	</Window>
+</Alloy>

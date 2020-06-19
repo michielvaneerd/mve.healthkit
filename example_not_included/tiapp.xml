@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ti:app xmlns:ti="http://ti.appcelerator.org">
+	<id>mve.healthkit.test</id>
+	<name>MveHealthKitTest</name>
+	<version>1.0</version>
+	<publisher>not specified</publisher>
+	<url/>
+	<description/>
+	<copyright>not specified</copyright>
+	<icon>appicon.png</icon>
+	<fullscreen>false</fullscreen>
+	<navbar-hidden>false</navbar-hidden>
+	<analytics>false</analytics>
+	<guid>e830f2d8-edc9-4274-b591-f63c325fe3f4</guid>
+	<property name="ti.ui.defaultunit" type="string">dp</property>
+	<property name="run-on-main-thread" type="bool">true</property>
+	<ios>
+		<enable-launch-screen-storyboard>true</enable-launch-screen-storyboard>
+		<use-app-thinning>true</use-app-thinning>
+		<plist>
+			<dict>
+				<key>NSHealthShareUsageDescription</key>
+        		<string>Deze app wil toegang tot je Apple Health data</string>
+				<key>UISupportedInterfaceOrientations~iphone</key>
+				<array>
+					<string>UIInterfaceOrientationPortrait</string>
+				</array>
+				<key>UISupportedInterfaceOrientations~ipad</key>
+				<array>
+					<string>UIInterfaceOrientationPortrait</string>
+					<string>UIInterfaceOrientationPortraitUpsideDown</string>
+					<string>UIInterfaceOrientationLandscapeLeft</string>
+					<string>UIInterfaceOrientationLandscapeRight</string>
+				</array>
+				<key>UIRequiresPersistentWiFi</key>
+				<false/>
+				<key>UIPrerenderedIcon</key>
+				<false/>
+				<key>UIStatusBarHidden</key>
+				<false/>
+				<key>UIStatusBarStyle</key>
+				<string>UIStatusBarStyleDefault</string>
+			</dict>
+		</plist>
+		<entitlements>
+			<dict>
+				<key>com.apple.developer.healthkit</key>
+				<true/>
+			</dict>
+		</entitlements>
+	</ios>
+	<android xmlns:android="http://schemas.android.com/apk/res/android">
+		<manifest xmlns:android="http://schemas.android.com/apk/res/android" android:versionCode="1">
+		</manifest>
+	</android>
+	<modules>
+		<module platform="ios">mve.healthkit</module>
+	</modules>
+	<deployment-targets>
+		<target device="android">false</target>
+		<target device="ipad">false</target>
+		<target device="iphone">true</target>
+	</deployment-targets>
+	<sdk-version>9.0.3.GA</sdk-version>
+<plugins><plugin version="1.0">ti.alloy</plugin>
+</plugins>
+</ti:app>

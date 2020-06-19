@@ -1,0 +1,4 @@
+android/build/
+#android/dist/
+.DS_Store
+
