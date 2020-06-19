@@ -10,30 +10,18 @@ import UIKit
 import TitaniumKit
 import HealthKit
 
-/**
- 
- Titanium Swift Module Requirements
- ---
- 
- 1. Use the @objc annotation to expose your class to Objective-C (used by the Titanium core)
- 2. Use the @objc annotation to expose your method to Objective-C as well.
- 3. Method arguments always have the "[Any]" type, specifying a various number of arguments.
- Unwrap them like you would do in Swift, e.g. "guard let arguments = arguments, let message = arguments.first"
- 4. You can use any public Titanium API like before, e.g. TiUtils. Remember the type safety of Swift, like Int vs Int32
- and NSString vs. String.
- 
- */
-
 @available(iOS 10.0, *)
 @objc(MveHealthkitModule)
 class MveHealthkitModule: TiModule {
     
+    enum TimeUnit: String, CaseIterable {
+        case hourly, daily, weekly, monthly, yearly
+    }
+    
     let unknownError = "Unknown error"
     static var errorCallback: KrollCallback? = nil
     
-    //var quantityOptionDict = [HKQuantityTypeIdentifier: HKStatisticsOptions]()
-    
-    // See startUp where conditional keys are added
+    // See startUp() where conditional keys are added
     var quantityOptionDict = [
         HKQuantityTypeIdentifier.stepCount: HKStatisticsOptions.cumulativeSum,
         HKQuantityTypeIdentifier.heartRate: HKStatisticsOptions.discreteAverage,
@@ -45,7 +33,7 @@ class MveHealthkitModule: TiModule {
         HKQuantityTypeIdentifier.distanceWheelchair: HKStatisticsOptions.cumulativeSum
     ]
     
-    // See startUp where conditional keys are added
+    // See startUp() where conditional keys are added
     var quantityCountFuncDict = [
         HKQuantityTypeIdentifier.stepCount: { HKUnit.count() },
         HKQuantityTypeIdentifier.heartRate: { HKUnit.count().unitDivided(by: HKUnit.minute()) },
@@ -56,6 +44,27 @@ class MveHealthkitModule: TiModule {
         HKQuantityTypeIdentifier.distanceWheelchair: { HKUnit.meterUnit(with: .kilo) }, // or mile() or meter()?
         HKQuantityTypeIdentifier.pushCount: { HKUnit.count() }
     ];
+    
+    // ******************************************
+    // Start functions created by Titanium module
+    // ******************************************
+    
+    func moduleGUID() -> String {
+        return "3912394f-db98-4ca7-af7a-9ddb8123462c"
+    }
+    
+    override func moduleId() -> String! {
+        return "mve.healthkit"
+    }
+
+    override func startup() {
+        super.startup()
+        myInitialize()
+    }
+    
+    // ***********************
+    // Start private functions
+    // ***********************
     
     private func getStatisticsQuantityFunc(statistics: HKStatistics, quantityTypeIdentifier: HKQuantityTypeIdentifier) -> HKQuantity? {
         switch quantityTypeIdentifier {
@@ -83,21 +92,7 @@ class MveHealthkitModule: TiModule {
         }
     }
     
-    enum TimeFrame: String {
-        case hourly, daily, weekly, monthly, yearly
-    }
-  
-    func moduleGUID() -> String {
-        return "3912394f-db98-4ca7-af7a-9ddb8123462c"
-    }
-  
-    override func moduleId() -> String! {
-        return "mve.healthkit"
-    }
-
-    override func startup() {
-        super.startup()
-        
+    private func myInitialize() {
         if #available(iOS 11.0, *) {
             quantityOptionDict[HKQuantityTypeIdentifier.restingHeartRate] = HKStatisticsOptions.discreteAverage
             quantityCountFuncDict[HKQuantityTypeIdentifier.restingHeartRate] = quantityCountFuncDict[HKQuantityTypeIdentifier.heartRate]
@@ -109,18 +104,61 @@ class MveHealthkitModule: TiModule {
             quantityOptionDict[HKQuantityTypeIdentifier.appleStandTime] = HKStatisticsOptions.cumulativeSum
             quantityCountFuncDict[HKQuantityTypeIdentifier.appleStandTime] = { HKUnit.minute() }
         }
-        
     }
     
     private func onError(_ message: String) {
         MveHealthkitModule.errorCallback?.call([["error": message]], thisObject: nil)
     }
     
+    // ****************
+    // Start public API
+    // ****************
+    
+    /**
+     Returns all available TimeUnit values that can be used.
+    
+     - Returns: Array of strings
+    */
+    @objc(getTimeUnits:)
+    func getTimeUnits(unused: Any?) -> [String] {
+        return Array(TimeUnit.allCases.map {
+            $0.rawValue
+        })
+    }
+    
+    /**
+     Returns all available HKQuantityTypeIdentifier values that can be used.
+     
+     - Returns: Array of strings
+     */
+    @objc(getQuantityTypeIdentifiers:)
+    func getQuantityTypeIdentifiers(unused: Any?) -> [String] {
+        return Array(quantityOptionDict.keys.map {
+            $0.rawValue
+        })
+    }
+    
+    /**
+     Checks if HealthKit is available.
+     
+     - Returns: True if HealthKit is enabled, false if it is not.
+     */
     @objc(isHealthDataAvailable:)
-    func isHealthDataAvailable(arguments: Array<Any>?) -> Bool {
+    func isHealthDataAvailable(unused: Array<Any>?) -> Bool {
         return HKHealthStore.isHealthDataAvailable()
     }
     
+    /**
+     Fetches requested quantity data.
+     
+     - Parameter arguments: Array. First item is a Dictionary<String, Any> with the following keys:
+        - timeUnit: String. Valid values are from TimeUnit enum.
+        - startDate: Date
+        - endDate: Date
+        - quantityTypeIdentifier: String. Valid values are returned from a call to getQuantityTypeIdentifiers().
+        - onSuccess: KrollCallback. Will be called with 1 parameter Array<[String: Int]>
+        - onError: KrollCallback?. Will be called with 1 parameter Dictionary<String, Any>. Only key is "error" with error message.
+     */
     @objc(fetchData:)
     func fetchData(arguments: Array<Any>?) {
         
@@ -134,8 +172,8 @@ class MveHealthkitModule: TiModule {
         
         // Required parameters
         guard
-            let timeFrameParam = params["timeFrame"] as? String,
-            let timeFrame = TimeFrame(rawValue: timeFrameParam),
+            let timeUnitParam = params["timeUnit"] as? String,
+            let timeUnit = TimeUnit(rawValue: timeUnitParam),
             let startDate = params["startDate"] as? Date,
             let endDate = params["endDate"] as? Date,
             let quantityTypeIdentifierParam = params["quantityTypeIdentifier"] as? String,
@@ -146,7 +184,7 @@ class MveHealthkitModule: TiModule {
         }
         
         // This will always succeed, hence no optional
-        let quantityTypeIdentifier = HKQuantityTypeIdentifier(rawValue: "HKQuantityTypeIdentifier" + (quantityTypeIdentifierParam.capitalizingFirstLetter()))
+        let quantityTypeIdentifier = HKQuantityTypeIdentifier(rawValue: quantityTypeIdentifierParam)
         
         guard let quantityType = HKObjectType.quantityType(forIdentifier: quantityTypeIdentifier) else {
             onError("Invalid quantityTypeIdentifier")
@@ -169,7 +207,7 @@ class MveHealthkitModule: TiModule {
             let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
             
             var dateComponent = DateComponents()
-            switch timeFrame {
+            switch timeUnit {
             case .daily:
                 dateComponent.day = 1
             case .hourly:
@@ -201,13 +239,11 @@ class MveHealthkitModule: TiModule {
                     return
                 }
                 
-                //var results = [String: Int]()
                 var results = Array<[String: Int]>()
                 
                 collection.enumerateStatistics(from: startDate, to: endDate) { (statistics: HKStatistics, stop) in
                     
                     if let quantity = self.getStatisticsQuantityFunc(statistics: statistics, quantityTypeIdentifier: quantityTypeIdentifier) {
-//                        results[formatter.string(from: statistics.startDate)] = Int(quantity.doubleValue(for: self.quantityCountFuncDict[quantityTypeIdentifier]!()))
                         results.append([formatter.string(from: statistics.startDate): Int(quantity.doubleValue(for: self.quantityCountFuncDict[quantityTypeIdentifier]!()))])
                     }
                     
@@ -227,10 +263,4 @@ class MveHealthkitModule: TiModule {
         
     }
   
-}
-
-extension String {
-    func capitalizingFirstLetter() -> String {
-        return prefix(1).capitalized + dropFirst()
-    }
 }

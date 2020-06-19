@@ -3,25 +3,23 @@ const moment = require("/alloy/moment");
 
 function doClick(e) {
 
-	try {
-		hk.fetchData({
-			quantityTypeIdentifier: $.quantityType.value,
-			timeFrame: "hourly",
-			startDate: moment().subtract(7, 'd').toDate(),
-			endDate: new Date(),
-			onSuccess: callback,
-			onError: function(error) {
-				console.log(error)
-			}
-		});
-	} catch (ex) {
-		console.log("ERROR");
-		console.log(ex);
-	}
+	console.log(hk.getQuantityTypeIdentifiers());
+
+	console.log(hk.getTimeUnits());
+
+	hk.fetchData({
+		quantityTypeIdentifier: $.quantityType.value,
+		timeUnit: "hourly",
+		startDate: moment().subtract(7, 'd').toDate(),
+		endDate: new Date(),
+		onSuccess: callback,
+		onError: function(ex) {
+			alert(ex.error);
+		}
+	});
 }
 
 function callback(arg) {
-	console.log("OK");
 	console.log(arg);	
 }
 
