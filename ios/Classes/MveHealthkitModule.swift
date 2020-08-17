@@ -20,6 +20,7 @@ class MveHealthkitModule: TiModule {
     
     let unknownError = "Unknown error"
     static var errorCallback: KrollCallback? = nil
+    static var workoutDict = [Int: HKWorkout]()
     
     // See startUp() where conditional keys are added
     var quantityOptionDict = [
@@ -148,6 +149,173 @@ class MveHealthkitModule: TiModule {
         return HKHealthStore.isHealthDataAvailable()
     }
     
+    @objc(fetchSessions:)
+    func fetchSessions(arguments: Array<Any>?) {
+        
+        MveHealthkitModule.workoutDict.removeAll()
+        
+        guard let arguments = arguments, let params = arguments[0] as? [String: Any] else {
+            return
+        }
+        
+        // Optional parameter
+        let sourceId = params["sourceId"] as? String
+        let errorCallback = params["onError"] as? KrollCallback
+        MveHealthkitModule.errorCallback = errorCallback
+        
+        guard
+            let startDate = params["startDate"] as? Date,
+            let endDate = params["endDate"] as? Date,
+            let successCallback = params["onSuccess"] as? KrollCallback else {
+            onError("Invalid parameters")
+            return
+        }
+        
+        let store = HKHealthStore()
+        let sampleType = HKObjectType.workoutType()
+        
+        store.requestAuthorization(toShare: nil, read: [sampleType]) { (success: Bool, error: Error?) in
+            
+            if !success {
+                self.onError(error?.localizedDescription ?? self.unknownError)
+                return
+            }
+            
+            let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+            let notMyAppPredicate = NSCompoundPredicate(notPredicateWithSubpredicate: HKQuery.predicateForObjects(from: .default()))
+            let compoundPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [predicate, notMyAppPredicate])
+            
+            let formatter = ISO8601DateFormatter()
+            formatter.timeZone = TimeZone.current
+            
+            var workoutResults = Array<[String: String]>()
+            
+            let query = HKSampleQuery(
+            sampleType: sampleType, predicate: compoundPredicate, limit: 0, sortDescriptors: nil) {
+                (query: HKSampleQuery, results: [HKSample]?, error: Error?) -> Void in
+                
+                var workoutCounter = 0
+                
+                if let results = results {
+                    for result in results {
+                        if let workout = result as? HKWorkout {
+                            
+                            if sourceId != nil && workout.sourceRevision.source.bundleIdentifier != sourceId {
+                                continue
+                            }
+                            
+                            workoutCounter += 1
+                            
+                            var dict = [String: String]()
+                            dict["id"] = String(workoutCounter)
+                            dict["name"] = workout.workoutActivityType.name
+                            dict["startDate"] = formatter.string(from: workout.startDate)
+                            dict["endDate"] = formatter.string(from: workout.endDate)
+                            
+                            workoutResults.append(dict)
+                            
+                            // Save for call to getHeartRateFromWorkout
+                            MveHealthkitModule.workoutDict[workoutCounter] = workout
+                            
+                        }
+                    }
+                } else {
+                    print("No results for workouts???")
+                }
+                
+                DispatchQueue.main.async {
+                    successCallback.call([
+                        workoutResults
+                    ], thisObject: nil)
+                }
+            }
+            store.execute(query)
+            
+        }
+        
+    }
+    
+    @objc(fetckWorkoutData:)
+    func fetckWorkoutData(arguments: Array<Any>?) {
+        guard let arguments = arguments, let params = arguments[0] as? [String: Any] else {
+            return
+        }
+        
+        // Optional parameter
+        let errorCallback = params["onError"] as? KrollCallback
+        MveHealthkitModule.errorCallback = errorCallback
+        
+        guard
+            let successCallback = params["onSuccess"] as? KrollCallback,
+            let workoutId = params["id"] as? Int else {
+            onError("Invalid parameters")
+            return
+        }
+        
+        if MveHealthkitModule.workoutDict[workoutId] == nil {
+            onError("Unknown workout id")
+            return
+        }
+        
+        guard let workout = MveHealthkitModule.workoutDict[workoutId] else {
+            onError("Unknown workout id")
+            return
+        }
+        
+        let typesToRead: Set<HKSampleType> = [HKObjectType.quantityType(forIdentifier: .heartRate)!]
+        let store = HKHealthStore()
+        
+        store.requestAuthorization(toShare: nil, read: typesToRead) { (success: Bool, error: Error?) in
+            
+            if !success {
+                self.onError(error?.localizedDescription ?? self.unknownError)
+                return
+            }
+            
+            guard let sampleType = HKSampleType.quantityType(forIdentifier: .heartRate) else {
+                self.onError("Cannot create sampletype heartRate")
+                return
+            }
+            
+            let predicate = HKQuery.predicateForObjects(from: workout)
+            let sortByDate = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)
+            
+            let query = HKSampleQuery(sampleType: sampleType, predicate: predicate, limit: Int(HKObjectQueryNoLimit), sortDescriptors: [sortByDate]) {
+                query, results, error in
+                
+                if error != nil {
+                    self.onError(error?.localizedDescription ?? self.unknownError)
+                    return
+                }
+                
+                guard let samples = results as? [HKQuantitySample] else {
+                    self.onError("No results")
+                    return
+                }
+            
+                let formatter = ISO8601DateFormatter()
+                formatter.timeZone = TimeZone.current
+                var myResults = Array<[String: Int]>()
+                
+                for sample in samples {
+                    
+                    myResults.append([formatter.string(from: sample.endDate) : Int(sample.quantity.doubleValue(for: HKUnit.count().unitDivided(by: HKUnit.minute())))])
+                    
+//                    print("\(formatter.string(from: sample.startDate)) - \(formatter.string(from: sample.endDate)): \(sample.quantity.doubleValue(for: HKUnit.count().unitDivided(by: HKUnit.minute())))")
+                }
+                
+                DispatchQueue.main.async {
+                    successCallback.call([
+                        myResults
+                    ], thisObject: nil)
+                }
+            }
+            
+            store.execute(query)
+            
+        }
+    }
+    
     /**
      Fetches requested quantity data.
      
@@ -263,4 +431,100 @@ class MveHealthkitModule: TiModule {
         
     }
   
+}
+
+extension HKWorkoutActivityType {
+
+    /*
+     Simple mapping of available workout types to a human readable name.
+     */
+    var name: String {
+        switch self {
+        case .americanFootball:             return "American Football"
+        case .archery:                      return "Archery"
+        case .australianFootball:           return "Australian Football"
+        case .badminton:                    return "Badminton"
+        case .baseball:                     return "Baseball"
+        case .basketball:                   return "Basketball"
+        case .bowling:                      return "Bowling"
+        case .boxing:                       return "Boxing"
+        case .climbing:                     return "Climbing"
+        case .crossTraining:                return "Cross Training"
+        case .curling:                      return "Curling"
+        case .cycling:                      return "Cycling"
+        case .dance:                        return "Dance"
+        case .danceInspiredTraining:        return "Dance Inspired Training"
+        case .elliptical:                   return "Elliptical"
+        case .equestrianSports:             return "Equestrian Sports"
+        case .fencing:                      return "Fencing"
+        case .fishing:                      return "Fishing"
+        case .functionalStrengthTraining:   return "Functional Strength Training"
+        case .golf:                         return "Golf"
+        case .gymnastics:                   return "Gymnastics"
+        case .handball:                     return "Handball"
+        case .hiking:                       return "Hiking"
+        case .hockey:                       return "Hockey"
+        case .hunting:                      return "Hunting"
+        case .lacrosse:                     return "Lacrosse"
+        case .martialArts:                  return "Martial Arts"
+        case .mindAndBody:                  return "Mind and Body"
+        case .mixedMetabolicCardioTraining: return "Mixed Metabolic Cardio Training"
+        case .paddleSports:                 return "Paddle Sports"
+        case .play:                         return "Play"
+        case .preparationAndRecovery:       return "Preparation and Recovery"
+        case .racquetball:                  return "Racquetball"
+        case .rowing:                       return "Rowing"
+        case .rugby:                        return "Rugby"
+        case .running:                      return "Running"
+        case .sailing:                      return "Sailing"
+        case .skatingSports:                return "Skating Sports"
+        case .snowSports:                   return "Snow Sports"
+        case .soccer:                       return "Soccer"
+        case .softball:                     return "Softball"
+        case .squash:                       return "Squash"
+        case .stairClimbing:                return "Stair Climbing"
+        case .surfingSports:                return "Surfing Sports"
+        case .swimming:                     return "Swimming"
+        case .tableTennis:                  return "Table Tennis"
+        case .tennis:                       return "Tennis"
+        case .trackAndField:                return "Track and Field"
+        case .traditionalStrengthTraining:  return "Traditional Strength Training"
+        case .volleyball:                   return "Volleyball"
+        case .walking:                      return "Walking"
+        case .waterFitness:                 return "Water Fitness"
+        case .waterPolo:                    return "Water Polo"
+        case .waterSports:                  return "Water Sports"
+        case .wrestling:                    return "Wrestling"
+        case .yoga:                         return "Yoga"
+        
+        // iOS 10
+        case .barre:                        return "Barre"
+        case .coreTraining:                 return "Core Training"
+        case .crossCountrySkiing:           return "Cross Country Skiing"
+        case .downhillSkiing:               return "Downhill Skiing"
+        case .flexibility:                  return "Flexibility"
+        case .highIntensityIntervalTraining:    return "High Intensity Interval Training"
+        case .jumpRope:                     return "Jump Rope"
+        case .kickboxing:                   return "Kickboxing"
+        case .pilates:                      return "Pilates"
+        case .snowboarding:                 return "Snowboarding"
+        case .stairs:                       return "Stairs"
+        case .stepTraining:                 return "Step Training"
+        case .wheelchairWalkPace:           return "Wheelchair Walk Pace"
+        case .wheelchairRunPace:            return "Wheelchair Run Pace"
+        
+        // iOS 11
+        case .taiChi:                       return "Tai Chi"
+        case .mixedCardio:                  return "Mixed Cardio"
+        case .handCycling:                  return "Hand Cycling"
+        
+        // iOS 13
+        case .discSports:                   return "Disc Sports"
+        case .fitnessGaming:                return "Fitness Gaming"
+        
+        // Catch-all
+        default:                            return "Other"
+        }
+    }
+
 }
